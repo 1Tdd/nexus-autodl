@@ -1,0 +1,125 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Nexus AutoDL Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+# 
+# This file controls all automation behavior. Edit values to match your setup.
+# After changes, restart the application for them to take effect.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DISPLAY SETTINGS
+# ─────────────────────────────────────────────────────────────────────────────
+# Template matching requires consistent screen resolution. If these don't match
+# your actual display, coordinates will be wrong and clicks will miss.
+
+display:
+  expected_width: 1920      # Your monitor width in pixels
+  expected_height: 1080     # Your monitor height in pixels
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VISION / TEMPLATE MATCHING
+# ─────────────────────────────────────────────────────────────────────────────
+# Controls how templates are detected on screen.
+# 
+# Algorithm cascade: Template Correlation → ORB → AKAZE
+# - Template Correlation: Fast pixel comparison, works for exact matches
+# - ORB: Feature-based, handles minor variations
+# - AKAZE: Slowest but most robust, used as fallback
+
+matching:
+  confidence_threshold: 0.80    # Minimum confidence for a solid match (0.0-1.0)
+                                # Lower if buttons aren't detected
+                                # Raise if getting false positives
+  
+  marginal_threshold: 0.60      # Below this, we try ORB/AKAZE fallback
+                                # Between marginal and confidence = warning + proceed
+  
+  use_grayscale: true           # Convert images to grayscale before matching
+                                # Faster and ignores color variations
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TIMING / DELAYS
+# ─────────────────────────────────────────────────────────────────────────────
+# Random delays between actions to avoid detection patterns.
+# The actual delay is randomly chosen within the min-max range.
+
+timing:
+  min_sleep_seconds: 1.5        # Minimum wait between scan cycles
+  max_sleep_seconds: 4.0        # Maximum wait between scan cycles
+  
+  hesitation_min_ms: 80         # Minimum pause before clicking (milliseconds)
+  hesitation_max_ms: 250        # Maximum pause before clicking
+                                # Humans don't click instantly after arriving
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MOUSE MOVEMENT / HUMANIZATION
+# ─────────────────────────────────────────────────────────────────────────────
+# These settings make mouse movement look human rather than robotic.
+# The goal is to pass as natural user interaction.
+
+mouse:
+  curve_resolution: 60          # Points on the Bézier curve path
+                                # Higher = smoother but more CPU
+                                # 60 is a good balance
+  
+  speed_factor: 0.9             # Movement speed multiplier
+                                # 1.0 = normal, 0.5 = slower, 1.5 = faster
+                                # Don't go above 1.5 or it looks robotic
+  
+  # OVERSHOOT: Mouse goes slightly past target, then corrects
+  # This is a key anti-detection feature - humans overshoot all the time
+  overshoot:
+    enabled: true               # Enable overshoot simulation
+    probability: 0.20           # Chance of overshoot per movement (0.0-1.0)
+    distance_min_px: 4          # Minimum overshoot distance in pixels
+    distance_max_px: 12         # Maximum overshoot distance in pixels
+    correction_delay_ms: 60     # Pause before correcting back (brain processing)
+  
+  # JITTER: Micro-tremors during movement to simulate hand shake
+  # Human hands aren't perfectly steady
+  jitter:
+    enabled: true               # Enable micro-jitter
+    amplitude_px: 1.5           # Maximum jitter offset in pixels
+    frequency: 0.25             # Fraction of path points that get jitter (0.0-1.0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# USER INTERFACE
+# ─────────────────────────────────────────────────────────────────────────────
+# Settings for the terminal dashboard.
+
+ui:
+  night_mode_start_hour: 20     # Hour (24h format) when night mode activates
+                                # Dims colors to reduce eye strain
+                                # Set to 24 to disable
+  
+  refresh_rate_ms: 100          # Dashboard update interval (milliseconds)
+                                # Lower = more responsive, more CPU
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEBUG / TROUBLESHOOTING
+# ─────────────────────────────────────────────────────────────────────────────
+# Enable these when something isn't working right.
+
+debug:
+  save_match_images: false      # Save screenshots with match rectangles
+                                # Written to logs/debug/
+                                # Useful for diagnosing detection issues
+  
+  verbose: false                # Extra logging output
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROFILES
+# ─────────────────────────────────────────────────────────────────────────────
+# Template organization.
+
+profiles:
+  root_directory: "profiles"    # Folder containing profile subfolders
+  active_profile: ""            # Default profile to load (can override with --profile)
