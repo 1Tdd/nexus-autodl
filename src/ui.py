@@ -13,7 +13,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.rule import Rule
 
-VERSION = "v0.4"
+VERSION = "v0.4.1"
 
 COLORS = {
     "bg": "#0f172a",
@@ -99,7 +99,7 @@ class Stats:
             Path(self.STATS_FILE).parent.mkdir(parents=True, exist_ok=True)
             with open(self.STATS_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
-        except: pass
+        except Exception: pass
         
     def load(self) -> None:
         import json
@@ -111,9 +111,11 @@ class Stats:
                 with self._lock:
                     self._total_clicks = data.get("total_clicks", 0)
                     self._total_matches = data.get("total_matches", 0)
-        except: pass
+        except Exception: pass
         
     def get(self) -> dict:
+        """Returns dict with keys: runtime, runtime_sec, cycles, matches,
+        clicks, errors, hit_rate, time_saved_min, total_clicks, total_matches."""
         with self._lock:
             now = datetime.now()
             current_pause = timedelta(0)
@@ -183,6 +185,7 @@ class Dashboard:
         self._current_template = ""
         self._stealth_mode = False
         self._stealth_action = ""
+        self._current_algo = ""
         self._lock = threading.Lock()
         
     @property

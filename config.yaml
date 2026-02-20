@@ -1,27 +1,20 @@
-# ═══════════════════════════════════════════════════════════════════════════════
 # Nexus AutoDL Configuration
-# ═══════════════════════════════════════════════════════════════════════════════
-# 
+#
 # This file controls all automation behavior. Edit values to match your setup.
 # After changes, restart the application for them to take effect.
-#
-# ═══════════════════════════════════════════════════════════════════════════════
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DISPLAY SETTINGS
-# ─────────────────────────────────────────────────────────────────────────────
+# --- Display ---
 # Template matching requires consistent screen resolution. If these don't match
 # your actual display, coordinates will be wrong and clicks will miss.
 
 display:
   expected_width: 1920      # Your monitor width in pixels
   expected_height: 1080     # Your monitor height in pixels
+  monitor: 1                # 0=all monitors, 1=primary, 2+=specific monitor
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VISION / TEMPLATE MATCHING
-# ─────────────────────────────────────────────────────────────────────────────
+# --- Vision / Template Matching ---
 # Controls how templates are detected on screen.
 # 
 # Algorithm cascade: Template Correlation → ORB → AKAZE
@@ -39,11 +32,15 @@ matching:
   
   use_grayscale: true           # Convert images to grayscale before matching
                                 # Faster and ignores color variations
+  
+  strategy: "cascade"           # Matching algorithm to use
+                                # "cascade"  - Template → ORB → AKAZE (recommended)
+                                # "template" - Fast pixel correlation only
+                                # "orb"      - Feature-based, handles minor variations
+                                # "akaze"    - Slowest, most robust
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# TIMING / DELAYS
-# ─────────────────────────────────────────────────────────────────────────────
+# --- Timing / Delays ---
 # Random delays between actions to avoid detection patterns.
 # The actual delay is randomly chosen within the min-max range.
 
@@ -56,9 +53,7 @@ timing:
                                 # Humans don't click instantly after arriving
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MOUSE MOVEMENT / HUMANIZATION
-# ─────────────────────────────────────────────────────────────────────────────
+# --- Mouse Movement ---
 # These settings make mouse movement look human rather than robotic.
 # The goal is to pass as natural user interaction.
 
@@ -88,9 +83,7 @@ mouse:
     frequency: 0.25             # Fraction of path points that get jitter (0.0-1.0)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# USER INTERFACE
-# ─────────────────────────────────────────────────────────────────────────────
+# --- User Interface ---
 # Settings for the terminal dashboard.
 
 ui:
@@ -102,24 +95,18 @@ ui:
                                 # Lower = more responsive, more CPU
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DEBUG / TROUBLESHOOTING
-# ─────────────────────────────────────────────────────────────────────────────
+# --- Debug ---
 # Enable these when something isn't working right.
 
-debug:
-  save_match_images: false      # Save screenshots with match rectangles
+visual:
+  debug_mode: false             # Save screenshots with match rectangles
                                 # Written to logs/debug/
                                 # Useful for diagnosing detection issues
-  
-  verbose: false                # Extra logging output
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PROFILES
-# ─────────────────────────────────────────────────────────────────────────────
+# --- Profiles ---
 # Template organization.
 
 profiles:
   root_directory: "profiles"    # Folder containing profile subfolders
-  active_profile: ""            # Default profile to load (can override with --profile)
+  active_profile: "example"            # Default profile to load (can override with --profile)

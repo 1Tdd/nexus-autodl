@@ -49,11 +49,6 @@ class MatchResult:
         
         return int(cx + offset_x), int(cy + offset_y)
 
-def is_hd_or_better(width: int, height: int) -> bool:
-    # Quick check if resolution is decent (1080p-ish or higher)
-    # Loose check
-    return width > 1600 and height > 900
-
 class ScreenCapture:
     # Screen grabber using mss (way faster than pyautogui)
     
@@ -139,7 +134,7 @@ class TemplateMatcher:
         
         h, w = t_img.shape[:2]
         return MatchResult(
-            found=True, # Checked by caller against threshold
+            found=max_val >= self._marginal,
             x=max_loc[0],
             y=max_loc[1],
             width=w,
@@ -148,7 +143,7 @@ class TemplateMatcher:
             algorithm="template"
         )
 
-    def _feature_match(self, template: np.ndarray, screen: np.ndarray, detector) -> MatchResult:
+    def _feature_match(self, template: np.ndarray, screen: np.ndarray, detector, name: str = "") -> MatchResult:
         try:
             kp1, des1 = detector.detectAndCompute(template, None)
             kp2, des2 = detector.detectAndCompute(screen, None)
@@ -190,8 +185,8 @@ class TemplateMatcher:
                         height=y_max - y_min,
                         confidence=conf
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            self._log(f"Feature match error ({name}): {e}", "WARN")
             
         return MatchResult(False)
 
@@ -210,7 +205,7 @@ class TemplateMatcher:
                        (result.x, result.y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
             ts = int(time.time() * 1000)
             cv2.imwrite(str(self._debug / f"match_{name}_{ts}.png"), vis)
-        except:
+        except Exception:
             pass
 
     def _match_template_only(self, template: np.ndarray, screen: np.ndarray, name: str) -> MatchResult:
@@ -226,7 +221,7 @@ class TemplateMatcher:
         return result
     
     def _match_orb_only(self, template: np.ndarray, screen: np.ndarray, name: str) -> MatchResult:
-        result = self._feature_match(template, screen, self._orb)
+        result = self._feature_match(template, screen, self._orb, name)
         result.algorithm = "orb"
         if result.found:
             if result.confidence < self._conf:
@@ -235,7 +230,7 @@ class TemplateMatcher:
         return result
         
     def _match_akaze_only(self, template: np.ndarray, screen: np.ndarray, name: str) -> MatchResult:
-        result = self._feature_match(template, screen, self._akaze)
+        result = self._feature_match(template, screen, self._akaze, name)
         result.algorithm = "akaze"
         if result.found:
             if result.confidence < self._conf:
@@ -256,7 +251,7 @@ class TemplateMatcher:
         # If template match was "okay" (marginal), we can try ORB to confirm.
         # But for now, we just proceed to feature matching if template fails.
             
-        res_orb = self._feature_match(template, screen, self._orb)
+        res_orb = self._feature_match(template, screen, self._orb, name)
         res_orb.algorithm = "orb"
         if res_orb.found: # Feature matching doesn't return confidence same way
              # We trust feature match if it found enough good matches (filtered inside)
@@ -264,7 +259,7 @@ class TemplateMatcher:
              return res_orb
              
         # 3. AKAZE (Slowest, handles scale/rotation)
-        res_akaze = self._feature_match(template, screen, self._akaze)
+        res_akaze = self._feature_match(template, screen, self._akaze, name)
         res_akaze.algorithm = "akaze"
         if res_akaze.found:
             self._save_debug(screen, res_akaze, name)

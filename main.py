@@ -1,16 +1,16 @@
 # Nexus-AutoDL - Bot for clicking download buttons
 # Because manually downloading 300 mods is for masochists
 
+import re
 import time
 import random
 import sys
-import shutil
 import keyboard
 import pyautogui
 import cv2  # OpenCV
 import numpy as np
 from pathlib import Path
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, Any
 
 # Local imports
 from src import AppConfig, load_config
@@ -18,9 +18,7 @@ from src.vision import ScreenCapture, TemplateMatcher
 from src.human_input import HumanMouse
 from src.ui import Dashboard, make_logger
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
+# Configuration
 
 DEFAULT_CONFIG = """
 # Nexus-AutoDL Configuration
@@ -55,16 +53,19 @@ timing:
 mouse:
   speed_factor: 1.0
   curve_resolution: 60
-  human_like_movement: true
-  jitter_enabled: true
-  jitter_amplitude: 1.5
-  jitter_frequency: 0.25
-  overshoot_enabled: true
-  overshoot_probability: 0.20
-  overshoot_distance: [4, 12]
-  overshoot_delay_ms: 60
-  click_offset_enabled: true
-  click_offset_ratio: 0.35
+  overshoot:
+    enabled: true
+    probability: 0.20
+    distance_min_px: 4
+    distance_max_px: 12
+    correction_delay_ms: 60
+  jitter:
+    enabled: true
+    amplitude_px: 1.5
+    frequency: 0.25
+  click_offset:
+    enabled: true
+    ratio: 0.35
 
 matching:
   confidence_threshold: 0.75
@@ -80,12 +81,9 @@ ui:
   night_mode_hour: 19
 """
 
-def sleep_random(base: float, jitter: float = 0.0) -> None:
-    # Random sleep to avoid looking like a bot
-    if jitter > 0:
-        base += base * random.uniform(-jitter, jitter)
-    if base > 0:
-        time.sleep(base)
+
+# Small visual delay between template scans so the dashboard shows progress
+SCAN_VISUAL_DELAY = 0.02
 
 class NexusBot:
     # Main bot class - handles all the clicking and scanning
@@ -100,7 +98,7 @@ class NexusBot:
         # Runtime State
         self.profile: str = ""
         self.templates: Dict[str, np.ndarray] = {}
-        self.last_pause_state: bool = False
+        self.last_pause_state: bool = True  # Matches paused=True initial state
         self.expecting_web: bool = False
         self.no_match_streak: int = 0
         
@@ -141,58 +139,24 @@ class NexusBot:
         self.log(f"Bot initialized. Profile: {self.profile}", "SUCCESS")
         self.log(f"READY. Press {self.cfg.hotkeys.pause_bot.upper()} to START.", "WARN")
 
-    def _check_resolution(self):
-        # Check if screen resolution matches config and prompt to fix if not
-        w, h = pyautogui.size()
-        ew, eh = self.cfg.display.expected_width, self.cfg.display.expected_height
-        
-        if w == ew and h == eh:
-            return # All good
-            
-        print("\n" + "!"*60)
-        print(" RESOLUTION MISMATCH DETECTED")
-        print("!"*60)
-        print(f" Detected Screen:   {w}x{h}")
-        print(f" Configured Expect: {ew}x{eh}")
-        print("\n If these don't match, your templates (images) might not be found.")
-        print("-" * 60)
-        print(" 1. Update Config to match Screen (Recommended)")
-        print(" 2. Continue anyway (I know what I'm doing)")
-        print(" 3. Exit")
-        
-        while True:
-            choice = input("\nSelect Option (1-3): ").strip()
-            if choice == "1":
-                self.cfg.display.expected_width = w
-                self.cfg.display.expected_height = h
-                
-                # Persistence
-                try:
-                    import re
-                    cfg_path = Path("config.yaml")
-                    if cfg_path.exists():
-                        content = cfg_path.read_text(encoding="utf-8")
-                        
-                        # Handle missing section (legacy config support)
-                        if "expected_width" not in content:
-                            content += f"\n\ndisplay:\n  expected_width: {w}\n  expected_height: {h}\n"
-                            print(">> Appended missing display section to config.")
-                        else:
-                            content = re.sub(r'(expected_width:\s*)\d+', f'\\g<1>{w}', content)
-                            content = re.sub(r'(expected_height:\s*)\d+', f'\\g<1>{h}', content)
-                            
-                        cfg_path.write_text(content, encoding="utf-8")
-                        print(">> Config updated successfully.")
-                except Exception as e:
-                    print(f">> Failed to save config: {e}")
-                break
-                
-            elif choice == "2":
-                print(">> Proceeding with mismatch...")
-                break
-                
-            elif choice == "3":
-                sys.exit(0)
+    def _bind_hotkeys(self):
+        # Register keyboard shortcuts for controlling the bot
+        keyboard.add_hotkey(self.cfg.hotkeys.pause_bot, self._toggle_pause)
+        keyboard.add_hotkey(self.cfg.hotkeys.stop_bot, self._stop)
+        keyboard.add_hotkey(self.cfg.hotkeys.reload_bot, self._request_reload)
+        keyboard.add_hotkey(self.cfg.hotkeys.cycle_strategy, self._request_cycle)
+
+    def _toggle_pause(self):
+        self.paused = not self.paused
+
+    def _stop(self):
+        self.running = False
+
+    def _request_reload(self):
+        self.reload_requested = True
+
+    def _request_cycle(self):
+        self.cycle_requested = True
 
     def _ensure_profile(self):
         # Make sure we have a valid profile selected
@@ -279,7 +243,6 @@ class NexusBot:
         
         # Persist settings
         try:
-            import re
             cfg_path = Path("config.yaml")
             if cfg_path.exists():
                 content = cfg_path.read_text(encoding="utf-8")
@@ -312,9 +275,10 @@ class NexusBot:
         
         if not available:
             print("(!) No profiles found.")
-            print("    Creating default profile: '1080p_dark'")
-            (profiles_dir / "1080p_dark").mkdir(parents=True, exist_ok=True)
-            self.profile = "1080p_dark"
+            print("    Creating default profile: 'example'")
+            # Default name; user can rename the folder or create new profiles later
+            (profiles_dir / "example").mkdir(parents=True, exist_ok=True)
+            self.profile = "example"
             time.sleep(1.0)
         else:
             print("Available Profiles:")
@@ -331,8 +295,14 @@ class NexusBot:
                         break
                     elif choice == len(available) + 1:
                         new_name = input("Enter new profile name: ").strip()
+                        # S-2: Sanitize profile name to prevent path traversal
+                        new_name = new_name.replace("\\", "").replace("/", "").replace("..", "").strip(". ")
                         if new_name:
-                            (profiles_dir / new_name).mkdir(exist_ok=True)
+                            new_path = (profiles_dir / new_name).resolve()
+                            if not str(new_path).startswith(str(profiles_dir.resolve())):
+                                print(">> Invalid profile name.")
+                                continue
+                            new_path.mkdir(exist_ok=True)
                             self.profile = new_name
                             break
                 except ValueError:
@@ -343,7 +313,6 @@ class NexusBot:
         self.cfg.profiles.active_profile = self.profile
         
         try:
-            import re
             cfg_path = Path("config.yaml")
             if cfg_path.exists():
                 content = cfg_path.read_text(encoding="utf-8")
@@ -386,14 +355,6 @@ class NexusBot:
         self.log = make_logger(self.dash)
         self.dash.start()
 
-    def _bind_hotkeys(self):
-        # Lambda wrappers to manipulate instance state
-        keyboard.add_hotkey(self.cfg.hotkeys.stop_bot, lambda: setattr(self, 'running', False))
-        keyboard.add_hotkey(self.cfg.hotkeys.pause_bot, lambda: setattr(self, 'paused', not self.paused))
-        keyboard.add_hotkey(self.cfg.hotkeys.reload_bot, lambda: setattr(self, 'reload_requested', True))
-        
-        cycle_key = getattr(self.cfg.hotkeys, 'cycle_strategy', 'f8')
-        keyboard.add_hotkey(cycle_key, lambda: setattr(self, 'cycle_requested', True))
 
     def _load_templates(self) -> Dict[str, np.ndarray]:
         # Load all template images from current profile folder
@@ -422,6 +383,7 @@ class NexusBot:
             speed=self.cfg.mouse.speed_factor,
             resolution=self.cfg.mouse.curve_resolution,
             jitter_amp=self.cfg.mouse.jitter_amplitude if self.cfg.mouse.jitter_enabled else 0,
+            jitter_freq=self.cfg.mouse.jitter_frequency if self.cfg.mouse.jitter_enabled else 0,
             overshoot=self.cfg.mouse.overshoot_enabled,
             overshoot_prob=self.cfg.mouse.overshoot_probability,
             hesitate_range=(self.cfg.timing.hesitation_min_ms, self.cfg.timing.hesitation_max_ms),
@@ -482,7 +444,7 @@ class NexusBot:
             # 1. Hotkey Checks
             if self.reload_requested: self.handle_reload()
             if self.cycle_requested: self.handle_cycle()
-            if not self.running: break
+            if not self.running or self.paused: break
             
             # 2. UI Refresh
             if self.dash: self.dash.update()
@@ -523,7 +485,8 @@ class NexusBot:
                 self._tick()
                 
                 # 4. Anti-Burnout Sleep (Responsive)
-                self.smart_sleep(self.cfg.timing.min_sleep_seconds, self.cfg.timing.jitter_pct)
+                sleep_duration = random.uniform(self.cfg.timing.min_sleep_seconds, self.cfg.timing.max_sleep_seconds)
+                self.smart_sleep(sleep_duration, self.cfg.timing.jitter_pct)
                 
         except KeyboardInterrupt:
             pass
@@ -558,21 +521,21 @@ class NexusBot:
         
         if self.cfg.timing.fallback_cycles > 0 and self.no_match_streak >= self.cfg.timing.fallback_cycles:
              self.log(f"Fallback mode: full scan (streak {self.no_match_streak})", "WARN")
-             random.shuffle(scan_order) # Shuffle maintains the list but randomized order usually helps getting out of loops, maybe keep stop_ at top? 
-             # Actually, for fallback, random is fine, but stop should arguably still be checking.
-             # Let's keep it simple for now and stick to shuffled if fallback.
+             # Shuffle non-stop templates; stop_ templates stay at the front
+             stop_items = [(n, t) for n, t in scan_order if n.lower().startswith("stop_")]
+             other_items = [(n, t) for n, t in scan_order if not n.lower().startswith("stop_")]
+             random.shuffle(other_items)
+             scan_order = stop_items + other_items
 
         matched = False
         
         # Scan
         for name, template in scan_order:
-            # Check for stop? logic is inside handle/match check
-            pass
 
             # Update Dash
             self.dash.set_template(name, self.cfg.matching.strategy.upper())
             self.dash.update()
-            time.sleep(0.02) # Visual delay so user sees what is happening
+            time.sleep(SCAN_VISUAL_DELAY)
             
             # Match
             # Use appropriate threshold
@@ -632,8 +595,6 @@ class NexusBot:
             self.smart_sleep(self.cfg.timing.web_click_delay, self.cfg.timing.jitter_pct)
             
             # Verification: Check for "Your download has started"
-            # Verification: Check for "Your download has started"
-            # Looks for any template starting with "web_download_started"
             verify_template = next((k for k in self.templates.keys() if k.startswith("web_download_started")), None)
             
             if verify_template:
@@ -673,6 +634,18 @@ class NexusBot:
             self.smart_sleep(self.cfg.timing.vortex_launch_delay, self.cfg.timing.jitter_pct)
 
     def shutdown(self):
+        # Unregister hotkeys
+        try:
+            keyboard.unhook_all()
+        except Exception:
+            pass
+        # Close screen capture handle
+        if self.screen and self.screen._sct:
+            try:
+                self.screen._sct.close()
+                self.screen._sct = None
+            except Exception:
+                pass
         if self.dash:
             self.dash.stop()
         print("\nExiting Nexus-AutoDL...")

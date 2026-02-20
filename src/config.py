@@ -10,14 +10,10 @@ from typing import Tuple, Optional
 import yaml
 
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MOUSE MOVEMENT - aka "Don't Move Like a Robot"
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+# --- Mouse Movement ---
 # Bots die because they move in straight lines at constant speed.
 # Humans are sloppy, shaky, and overshoot targets. Embrace the chaos.
-#
+
 
 @dataclass
 class MouseConfig:
@@ -50,13 +46,11 @@ class MouseConfig:
     click_offset_ratio: float = 0.30  # Max offset (0.30 = up to 30% from center)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TEMPLATE MATCHING - Vision System Tuning
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+
+# --- Template Matching ---
 # How picky the bot is about "finding" buttons. Too high = misses real buttons.
 # Too low = clicks random garbage that kinda looks like buttons.
-#
+
 
 @dataclass
 class MatchingConfig:
@@ -85,13 +79,11 @@ class MatchingConfig:
     strategy: str = "cascade"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TIMING - The "Don't Get Rate-Limited" Section
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+
+# --- Timing ---
 # This is where most people get banned. They set delays to 0.1s and wonder
 # why Nexus shows them the door. Randomization is your friend.
-#
+
 
 @dataclass 
 class TimingConfig:
@@ -129,14 +121,11 @@ class TimingConfig:
     download_verify_timeout: float = 10.0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# DISPLAY - Resolution Sanity Check
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+
+# --- Display ---
 # Templates are resolution-specific. If you captured buttons at 1080p and
 # run at 1440p, nothing will match. Bot will sit there doing nothing.
-# Not a bug - it's you.
-#
+
 
 @dataclass
 class DisplayConfig:
@@ -149,12 +138,10 @@ class DisplayConfig:
     monitor: int = 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# UI CONFIG - Dashboard Appearance
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+
+# --- UI ---
 # Cosmetic stuff. Won't get you banned but might save your eyes at 2am.
-#
+
 
 @dataclass
 class UIConfig:
@@ -169,12 +156,10 @@ class UIConfig:
     refresh_rate_ms: int = 100
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# HOTKEYS - Panic Buttons
-# ═══════════════════════════════════════════════════════════════════════════════
-#
+
+# --- Hotkeys ---
 # When things go sideways, you'll want these memorized.
-#
+
 
 @dataclass
 class HotkeysConfig:
@@ -208,10 +193,10 @@ class VisualConfig:
     # Debug settings
     debug_mode: bool = False
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# MASTER CONFIG
-# ═══════════════════════════════════════════════════════════════════════════════
+# --- Master Config ---
 
+
+@dataclass
 class AppConfig:
     # Main config - bundles everything together
     # Use load_config() to create this
@@ -220,15 +205,14 @@ class AppConfig:
     timing: TimingConfig = field(default_factory=TimingConfig)
     mouse: MouseConfig = field(default_factory=MouseConfig)
     ui: UIConfig = field(default_factory=UIConfig)
-    ui: UIConfig = field(default_factory=UIConfig)
     hotkeys: HotkeysConfig = field(default_factory=HotkeysConfig)
     profiles: ProfilesConfig = field(default_factory=ProfilesConfig)
     visual: VisualConfig = field(default_factory=VisualConfig)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CONFIG LOADER
-# ═══════════════════════════════════════════════════════════════════════════════
+
+# --- Config Loader ---
+
 
 def _get(data: dict, *keys, default=None):
     # Safe nested dict access without KeyErrors
@@ -257,7 +241,8 @@ def load_config(path: str = "config.yaml") -> AppConfig:
     # Build config from YAML with fallbacks
     display = DisplayConfig(
         expected_width=_get(data, "display", "expected_width", default=1920),
-        expected_height=_get(data, "display", "expected_height", default=1080)
+        expected_height=_get(data, "display", "expected_height", default=1080),
+        monitor=_get(data, "display", "monitor", default=1)
     )
     
     matching = MatchingConfig(
@@ -314,7 +299,7 @@ def load_config(path: str = "config.yaml") -> AppConfig:
         cycle_strategy=_get(data, "hotkeys", "cycle_strategy", default="f8")
     )
     
-    return AppConfig(
+    cfg = AppConfig(
         display=display,
         matching=matching,
         timing=timing,
@@ -329,3 +314,43 @@ def load_config(path: str = "config.yaml") -> AppConfig:
             debug_mode=_get(data, "visual", "debug_mode", default=False)
         )
     )
+    _validate(cfg)
+    return cfg
+
+
+def _validate(cfg: AppConfig) -> None:
+    """Clamp config values to safe ranges to prevent undefined behavior."""
+    # Display
+    cfg.display.expected_width = max(640, cfg.display.expected_width)
+    cfg.display.expected_height = max(480, cfg.display.expected_height)
+    cfg.display.monitor = max(0, cfg.display.monitor)
+
+    # Matching thresholds (0.0 – 1.0)
+    cfg.matching.confidence_threshold = max(0.1, min(1.0, cfg.matching.confidence_threshold))
+    cfg.matching.marginal_threshold = max(0.05, min(cfg.matching.confidence_threshold, cfg.matching.marginal_threshold))
+    if cfg.matching.strategy not in ("cascade", "template", "orb", "akaze"):
+        cfg.matching.strategy = "cascade"
+
+    # Timing (no negative/zero delays)
+    cfg.timing.min_sleep_seconds = max(0.1, cfg.timing.min_sleep_seconds)
+    cfg.timing.max_sleep_seconds = max(cfg.timing.min_sleep_seconds, cfg.timing.max_sleep_seconds)
+    cfg.timing.vortex_launch_delay = max(0.5, cfg.timing.vortex_launch_delay)
+    cfg.timing.web_click_delay = max(0.1, cfg.timing.web_click_delay)
+    cfg.timing.jitter_pct = max(0.0, min(0.5, cfg.timing.jitter_pct))
+    cfg.timing.hesitation_min_ms = max(0, cfg.timing.hesitation_min_ms)
+    cfg.timing.hesitation_max_ms = max(cfg.timing.hesitation_min_ms, cfg.timing.hesitation_max_ms)
+    cfg.timing.fallback_cycles = max(0, cfg.timing.fallback_cycles)
+    cfg.timing.download_verify_timeout = max(1.0, cfg.timing.download_verify_timeout)
+
+    # Mouse
+    cfg.mouse.curve_resolution = max(10, min(200, cfg.mouse.curve_resolution))
+    cfg.mouse.speed_factor = max(0.1, min(3.0, cfg.mouse.speed_factor))
+    cfg.mouse.overshoot_probability = max(0.0, min(1.0, cfg.mouse.overshoot_probability))
+    cfg.mouse.jitter_amplitude = max(0.0, min(10.0, cfg.mouse.jitter_amplitude))
+    cfg.mouse.jitter_frequency = max(0.0, min(1.0, cfg.mouse.jitter_frequency))
+    cfg.mouse.click_offset_ratio = max(0.0, min(0.5, cfg.mouse.click_offset_ratio))
+
+    # UI
+    cfg.ui.refresh_rate_ms = max(50, min(2000, cfg.ui.refresh_rate_ms))
+    cfg.ui.night_mode_hour = max(0, min(23, cfg.ui.night_mode_hour))
+

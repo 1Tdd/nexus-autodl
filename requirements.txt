@@ -5,4 +5,6 @@ pyautogui>=0.9.54
 rich>=13.0.0
 keyboard>=0.13.5
 pyyaml>=6.0
+
+# Build tools (not needed at runtime)
 pyinstaller>=6.0.0
