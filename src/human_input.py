@@ -145,7 +145,8 @@ class HumanMouse:
         pyautogui.mouseDown()
         time.sleep(random.uniform(0.06, 0.14)) # Human hold time
         pyautogui.mouseUp()
-        return pyautogui.position()
+        pos = pyautogui.position()
+        return (pos[0], pos[1])
 
     def move_and_click(
         self, 

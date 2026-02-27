@@ -23,35 +23,30 @@ from src.ui import Dashboard, make_logger
 DEFAULT_CONFIG = """
 # Nexus-AutoDL Configuration
 
-profiles:
-  active_profile: "" # Set on first run
-  profiles_dir: "profiles"
-
 display:
   expected_width: 1920
   expected_height: 1080
   monitor: 1  # 0=all, 1=primary, 2+=specific
 
-hotkeys:
-  pause_bot: "f9"
-  stop_bot: "f10"
-  reload_bot: "f5"
-  cycle_strategy: "f8"
-  close_tab: "ctrl+w"
+matching:
+  confidence_threshold: 0.80
+  marginal_threshold: 0.60
+  use_grayscale: true
+  strategy: "cascade"  # cascade, template, orb, akaze
 
 timing:
-  min_sleep_seconds: 1.0
-  max_sleep_seconds: 2.5
+  min_sleep_seconds: 1.5
+  max_sleep_seconds: 4.0
   vortex_launch_delay: 3.5
   web_click_delay: 1.0
   jitter_pct: 0.20
-  hesitation_min_ms: 50
-  hesitation_max_ms: 180
+  hesitation_min_ms: 80
+  hesitation_max_ms: 250
   fallback_cycles: 4
   download_verify_timeout: 10.0
 
 mouse:
-  speed_factor: 1.0
+  speed_factor: 0.9
   curve_resolution: 60
   overshoot:
     enabled: true
@@ -67,18 +62,23 @@ mouse:
     enabled: true
     ratio: 0.35
 
-matching:
-  confidence_threshold: 0.75
-  marginal_threshold: 0.55
-  use_grayscale: true
-  strategy: "cascade"  # cascade, template, orb, akaze
+hotkeys:
+  pause_bot: "f9"
+  stop_bot: "f10"
+  reload_bot: "f5"
+  cycle_strategy: "f8"
+  close_tab: "ctrl+w"
+
+ui:
+  night_mode_start_hour: 20
+  refresh_rate_ms: 100
 
 visual:
   debug_mode: false
 
-ui:
-  refresh_rate_ms: 100
-  night_mode_hour: 19
+profiles:
+  profiles_dir: "profiles"
+  active_profile: ""  # Set on first run
 """
 
 
@@ -317,8 +317,8 @@ class NexusBot:
             if cfg_path.exists():
                 content = cfg_path.read_text(encoding="utf-8")
                 new_content = re.sub(
-                    r'(active_profile:\s*)["\']?.*?["\']?(\s*#|$)', 
-                    f'\\1"{self.profile}"\\2', 
+                    r'(active_profile:\s*)["\']?[^"\']*("[^"]*"|\'[^\']*\')?[^\n]*', 
+                    f'\\1"{self.profile}"', 
                     content, 
                     count=1
                 )
@@ -398,12 +398,19 @@ class NexusBot:
             self.log(f"Templates loaded: {len(self.templates)}", "INFO")
 
     def handle_reload(self):
-        # Hot-reload config and systems
+        # Hot-reload config and systems (without interactive wizard)
         self.reload_requested = False
         try:
             old_profile = self.profile
             self.cfg = load_config()
-            self._ensure_profile() # Re-verify profile logic
+            
+            # Validate profile without running interactive wizard
+            profiles_dir = Path("profiles")
+            if self.cfg.profiles.active_profile:
+                candidate = profiles_dir / self.cfg.profiles.active_profile
+                if candidate.exists() and candidate.is_dir():
+                    self.profile = self.cfg.profiles.active_profile
+            # If profile invalid, keep current profile
             
             if self.profile != old_profile:
                 self.log(f"Profile switched: {old_profile} -> {self.profile}", "SUCCESS")
@@ -543,7 +550,7 @@ class NexusBot:
                 # High confidence for stop signals to avoid false positives
                 thresh = 0.85
             else:
-                 thresh = self.cfg.matching.marginal_threshold
+                 thresh = self.cfg.matching.confidence_threshold
 
             result = self.matcher.match(template, screenshot, name)
             
@@ -580,6 +587,12 @@ class NexusBot:
         cx, cy = result.center
         if self.cfg.mouse.click_offset_enabled:
             cx, cy = result.random_click_point(self.cfg.mouse.click_offset_ratio)
+        
+        # Apply monitor offset for multi-monitor setups
+        if hasattr(self.screen, 'monitor_offset'):
+            ox, oy = self.screen.monitor_offset
+            cx += ox
+            cy += oy
             
         # Action
         x, y = self.mouse.move_and_click(cx, cy, return_home=False)

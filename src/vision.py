@@ -55,6 +55,7 @@ class ScreenCapture:
     def __init__(self, monitor_index: int = 1) -> None:
         self._sct: Optional[mss.mss] = None
         self.monitor_index = monitor_index
+        self._monitor_offset: tuple = (0, 0)  # Screen-absolute offset for current monitor
         
     def __enter__(self):
         self._sct = mss.mss()
@@ -78,12 +79,21 @@ class ScreenCapture:
         # Pick the right monitor (clamped to valid range)
         monitor_idx = max(0, min(self.monitor_index, len(self._sct.monitors) - 1))
         monitor = self._sct.monitors[monitor_idx]
+        
+        # Store monitor offset for coordinate translation
+        self._monitor_offset = (monitor.get('left', 0), monitor.get('top', 0))
+        
         img = self._sct.grab(monitor)
         
         # Convert to numpy/opencv BGR
         frame = np.array(img)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         return frame
+    
+    @property
+    def monitor_offset(self) -> tuple:
+        """Screen-absolute (x, y) offset of the captured monitor region."""
+        return self._monitor_offset
 
 class TemplateMatcher:
     # Handles template matching with cascade of strategies
@@ -154,9 +164,11 @@ class TemplateMatcher:
             matches = self._matcher.knnMatch(des1, des2, k=2)
             
             good = []
-            for m, n in matches:
-                if m.distance < 0.75 * n.distance:
-                    good.append(m)
+            for pair in matches:
+                if len(pair) == 2:
+                    m, n = pair
+                    if m.distance < 0.75 * n.distance:
+                        good.append(m)
                     
             if len(good) > 8:
                 src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)

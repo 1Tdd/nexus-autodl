@@ -1,7 +1,7 @@
 # Nexus AutoDL Configuration
 #
 # This file controls all automation behavior. Edit values to match your setup.
-# After changes, restart the application for them to take effect.
+# Press F5 at runtime to hot-reload, or restart the application.
 
 
 # --- Display ---
@@ -45,12 +45,15 @@ matching:
 # The actual delay is randomly chosen within the min-max range.
 
 timing:
-  min_sleep_seconds: 1.5        # Minimum wait between scan cycles
-  max_sleep_seconds: 4.0        # Maximum wait between scan cycles
-  
-  hesitation_min_ms: 80         # Minimum pause before clicking (milliseconds)
-  hesitation_max_ms: 250        # Maximum pause before clicking
-                                # Humans don't click instantly after arriving
+  min_sleep_seconds: 1.5          # Minimum wait between scan cycles
+  max_sleep_seconds: 4.0          # Maximum wait between scan cycles
+  vortex_launch_delay: 3.5        # Wait after clicking Vortex button (browser open time)
+  web_click_delay: 1.0            # Wait after clicking "Slow Download" before closing tab
+  jitter_pct: 0.20                # +/- randomness added to all delays (0.20 = 20%)
+  hesitation_min_ms: 80           # Minimum pause before clicking (milliseconds)
+  hesitation_max_ms: 250          # Maximum pause before clicking
+  fallback_cycles: 4              # After N cycles with no match, try all templates
+  download_verify_timeout: 10.0   # Seconds to wait for download confirmation text
 
 
 # --- Mouse Movement ---
@@ -81,6 +84,23 @@ mouse:
     enabled: true               # Enable micro-jitter
     amplitude_px: 1.5           # Maximum jitter offset in pixels
     frequency: 0.25             # Fraction of path points that get jitter (0.0-1.0)
+  
+  # CLICK OFFSET: Randomize click position within the button area
+  # Perfect center-clicks are a bot tell
+  click_offset:
+    enabled: true               # Enable click position randomization
+    ratio: 0.35                 # Max offset from center (0.35 = up to 35%)
+
+
+# --- Hotkeys ---
+# Keyboard shortcuts for controlling the bot at runtime.
+
+hotkeys:
+  pause_bot: "f9"               # Pause/resume the bot
+  stop_bot: "f10"               # Stop and exit the bot
+  reload_bot: "f5"              # Hot-reload config without restarting
+  cycle_strategy: "f8"          # Cycle matching strategy at runtime
+  close_tab: "ctrl+w"           # Close browser tab after download
 
 
 # --- User Interface ---
@@ -108,5 +128,5 @@ visual:
 # Template organization.
 
 profiles:
-  root_directory: "profiles"    # Folder containing profile subfolders
-  active_profile: "example"            # Default profile to load (can override with --profile)
+  profiles_dir: "profiles"      # Folder containing profile subfolders
+  active_profile: "example"     # Profile to load at startup

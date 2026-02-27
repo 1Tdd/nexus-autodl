@@ -25,8 +25,10 @@ COLORS = {
     "heading": "#fa933c", # Nexus Orange
     "success": "#10b981",
     "warning": "#f59e0b",
+    "warn": "#f59e0b",
     "error": "#ef4444",
     "info": "#3b82f6",
+    "click": "#10b981",
     "stealth": "#a855f7",
     "idle": "#64748b",
     "active": "#10b981",
@@ -50,7 +52,7 @@ class Stats:
         self._lock = threading.Lock()
         self._start = datetime.now()
         self._paused_duration = timedelta(0)
-        self._pause_start: Optional[datetime] = None
+        self._pause_start: Optional[datetime] = datetime.now()  # Start paused (bot starts paused)
         self.cycles = 0
         self.matches = 0
         self.clicks = 0
@@ -327,7 +329,7 @@ class Dashboard:
             
         for ts, lvl, msg in visible:
             text.append(f" {ts} ", style=COLORS['text_dim'])
-            c = COLORS.get(lvl.lower(), COLORS['active'] if lvl == "CLICK" else COLORS['info'])
+            c = COLORS.get(lvl.lower(), COLORS['info'])
             text.append(f"[{lvl:^7}]", style=f"bold {c}")
             text.append(f" {msg}\n", style=COLORS['text'])
             
